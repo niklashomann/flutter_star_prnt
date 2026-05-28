@@ -28,31 +28,39 @@ public class SwiftFlutterStarPrntPlugin: NSObject, FlutterPlugin {
     public func portDiscovery(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
         let arguments = call.arguments as! Dictionary<String, AnyObject>
         let type = arguments["type"] as! String
-        do {
-            var info = [Dictionary<String,String>]()
-            if ( type == "Bluetooth" || type == "All") {
-                let btPortInfoArray = try SMPort.searchPrinter(target: "BT:")
-                for printer in btPortInfoArray {
-                    info.append(portInfoToDictionary(portInfo: printer as! PortInfo))
+        // SMPort.searchPrinter(target: "BT:") triggers the ExternalAccessory / iAP
+        // enumeration, which blocks for ~6s on devices where the iapd daemon is idle.
+        // Run it off the platform (main) thread so the Flutter UI stays responsive,
+        // then deliver the FlutterResult back on the main thread.
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                var info = [Dictionary<String,String>]()
+                if ( type == "Bluetooth" || type == "All") {
+                    let btPortInfoArray = try SMPort.searchPrinter(target: "BT:")
+                    for printer in btPortInfoArray {
+                        info.append(self.portInfoToDictionary(portInfo: printer as! PortInfo))
+                    }
+                }
+                if ( type == "LAN" || type == "All") {
+                    let lanPortInfoArray = try SMPort.searchPrinter(target: "TCP:")
+                    for printer in lanPortInfoArray {
+                        info.append(self.portInfoToDictionary(portInfo: printer as! PortInfo))
+                    }
+                }
+                if ( type == "USB" || type == "All") {
+                    let usbPortInfoArray = try SMPort.searchPrinter(target: "USB:")
+                    for printer in usbPortInfoArray {
+                        info.append(self.portInfoToDictionary(portInfo: printer as! PortInfo))
+                    }
+                }
+                DispatchQueue.main.async { result(info) }
+            } catch {
+                DispatchQueue.main.async {
+                    result(
+                        FlutterError.init(code: "PORT_DISCOVERY_ERROR", message: error.localizedDescription, details: nil)
+                    )
                 }
             }
-            if ( type == "LAN" || type == "All") {
-                let lanPortInfoArray = try SMPort.searchPrinter(target: "TCP:")
-                for printer in lanPortInfoArray {
-                    info.append(portInfoToDictionary(portInfo: printer as! PortInfo))
-                }
-            }
-            if ( type == "USB" || type == "All") {
-                let usbPortInfoArray = try SMPort.searchPrinter(target: "USB:")
-                for printer in usbPortInfoArray {
-                    info.append(portInfoToDictionary(portInfo: printer as! PortInfo))
-                }
-            }
-            result(info)
-        } catch {
-            result(
-                FlutterError.init(code: "PORT_DISCOVERY_ERROR", message: error.localizedDescription, details: nil)
-            )
         }
     }
 
